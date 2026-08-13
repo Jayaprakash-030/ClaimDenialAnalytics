@@ -1,0 +1,9 @@
+__pycache__/
+.venv/
+
+plan.md
+
+docs/
+
+# Local config provenance (not for repo)
+generator/config-provenance.md

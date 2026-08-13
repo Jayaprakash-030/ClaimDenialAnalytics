@@ -1,0 +1,50 @@
+seed: 42
+
+simulation:
+  start_date: "2024-01-01"
+  end_date: "2025-12-31"
+
+counts:
+  members: 15000
+  providers: 300
+  claims: 100000
+
+rates:
+  front_end_rejection: 0.03
+  auto_adjudication: 0.85
+  duplicate_claim_share: 0.01
+  enrollment_gap_share: 0.06
+  in_network_share: 0.90
+  chargemaster_multiplier_min: 2.0
+  chargemaster_multiplier_max: 4.0
+
+  appeal_filing_lag_days_min: 14
+  appeal_filing_lag_days_max: 35
+  appeal_decision_lag_days_min: 21
+  appeal_decision_lag_days_max: 42
+
+  co197_never_requested_share: 0.60
+  co197_unmatched_share: 0.40
+
+  admin_cost_auto: 3.0
+  admin_cost_manual: 20.0
+  admin_cost_appeal: 35.0
+
+targets:
+  denial_rate_by_lob:
+    commercial: 0.12
+    aca_marketplace: 0.19
+    medicare_advantage: 0.11
+    medicaid_managed_care: 0.15
+
+  auto_adjudication_rate: 0.85
+
+  appeal_rate_of_denials: 0.12
+
+  overturn_rate_by_category:
+    process: 0.05
+    eligibility: 0.30
+    coding: 0.20
+    authorization: 0.75
+    clinical: 0.55
+    benefit_design: 0.05
