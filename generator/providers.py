@@ -11,6 +11,7 @@ import pandas as pd
 from faker import Faker
 
 from generator.reference_data import load_config
+from generator.save_tables import save_csv
 
 # (provider_type, specialty, share) — shares must sum to 1.0
 _PROVIDER_MIX: list[tuple[str, str, float]] = [
@@ -59,7 +60,9 @@ def generate_providers(config: dict | None = None) -> pd.DataFrame:
     # Most providers: billing_quality ~ Beta skewed high; problem ones forced low later
     billing_quality = np.clip(rng.beta(5, 1.5, size=n), 0.15, 1.0)
 
-    problem_idx = set(rng.choice(n, size=_PROBLEM_PROVIDER_COUNT, replace=False).tolist())
+    problem_idx = set(
+        rng.choice(n, size=_PROBLEM_PROVIDER_COUNT, replace=False).tolist()
+    )
 
     rows: list[dict] = []
     for i in range(n):
@@ -72,7 +75,11 @@ def generate_providers(config: dict | None = None) -> pd.DataFrame:
         specialty = specialties[mix_idx[i]]
 
         if provider_type in {"independent_physician", "ambulatory_clinic", "pt_clinic"}:
-            name = f"Dr. {fake.last_name()}" if provider_type == "independent_physician" else fake.company()
+            name = (
+                f"Dr. {fake.last_name()}"
+                if provider_type == "independent_physician"
+                else fake.company()
+            )
         elif provider_type == "hospital":
             name = f"{fake.city()} {rng.choice(['Medical Center', 'Hospital', 'Regional Hospital'])}"
         elif provider_type == "imaging_center":
@@ -104,7 +111,9 @@ if __name__ == "__main__":
     print(providers.head())
     print()
     print(f"Count: {len(providers)} (target {cfg['counts']['providers']})")
-    print(f"In-network share: {providers['in_network'].mean():.3f} (target {cfg['rates']['in_network_share']})")
+    print(
+        f"In-network share: {providers['in_network'].mean():.3f} (target {cfg['rates']['in_network_share']})"
+    )
     print()
     print("Provider type mix:")
     print(providers["provider_type"].value_counts(normalize=True).round(3))
@@ -114,7 +123,12 @@ if __name__ == "__main__":
     print()
     problems = providers.loc[providers["is_problem_provider"]]
     print(f"Problem providers: {len(problems)}")
-    print(problems[["provider_id", "provider_name", "billing_quality", "in_network"]].to_string(index=False))
+    print(
+        problems[
+            ["provider_id", "provider_name", "billing_quality", "in_network"]
+        ].to_string(index=False)
+    )
     print()
     print(f"Billing quality mean (all): {providers['billing_quality'].mean():.3f}")
     print(f"Billing quality mean (problems): {problems['billing_quality'].mean():.3f}")
+    save_csv(providers, "providers")

@@ -13,6 +13,7 @@ import pandas as pd
 
 from generator.members import generate_members
 from generator.providers import generate_providers
+from generator.save_tables import save_csv
 from generator.reference_data import (
     get_cpt_codes,
     get_icd10_codes,
@@ -111,9 +112,7 @@ def generate_service_events(
         day_offsets,
     )
 
-    service_dates = [
-        window_start + timedelta(days=int(d)) for d in day_offsets
-    ]
+    service_dates = [window_start + timedelta(days=int(d)) for d in day_offsets]
     icd10_codes = rng.choice(icd_codes, size=n)
     pa_required = np.array([pa_flags[sid] for sid in service_line_ids])
 
@@ -154,9 +153,14 @@ if __name__ == "__main__":
     print()
     # CPT belongs to service line
     cpts = get_cpt_codes()
-    merged = events.merge(cpts[["cpt_code", "service_line_id"]], on="cpt_code", suffixes=("", "_cpt"))
+    merged = events.merge(
+        cpts[["cpt_code", "service_line_id"]], on="cpt_code", suffixes=("", "_cpt")
+    )
     mismatches = (merged["service_line_id"] != merged["service_line_id_cpt"]).sum()
     print(f"CPT/service-line mismatches: {mismatches}")
     print(
         f"Date range: {events['service_date'].min().date()} → {events['service_date'].max().date()}"
     )
+    save_csv(members, "members")
+    save_csv(providers, "providers")
+    save_csv(events, "service_events")

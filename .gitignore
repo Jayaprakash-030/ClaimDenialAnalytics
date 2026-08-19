@@ -1,5 +1,6 @@
 __pycache__/
 .venv/
+.DS_Store
 
 plan.md
 
@@ -7,3 +8,6 @@ docs/
 
 # Local config provenance (not for repo)
 generator/config-provenance.md
+
+# Generated CSVs
+data/raw/*.csv

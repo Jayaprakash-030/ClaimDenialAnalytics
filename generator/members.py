@@ -14,6 +14,7 @@ import pandas as pd
 from faker import Faker
 
 from generator.reference_data import get_lines_of_business, load_config
+from generator.save_tables import save_csv
 
 
 def _random_date(rng: np.random.Generator, start: date, end: date) -> date:
@@ -159,3 +160,4 @@ if __name__ == "__main__":
     print("...")
     print(monthly.tail(6))
     print(f"Monthly min/max: {monthly.min()} / {monthly.max()}")
+    save_csv(members, "members")
