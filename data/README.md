@@ -21,3 +21,4 @@ Or run a single module; its `__main__` also writes its CSV.
 | `providers.csv` | `providers.py` | Network, billing quality |
 | `service_events.csv` | `service_events.py` | Planned visits (source of truth for PA + claims) |
 | `prior_auths.csv` | `prior_auth.py` | PA decisions on PA-required events (approved / denied / never requested) |
+| `claims.csv` | `claims.py` | Submitted bills (amounts + received date); ~1% duplicates |

@@ -10,6 +10,7 @@ from generator.reference_data import (
     get_service_lines,
     load_config,
 )
+from generator.claims import generate_claims
 from generator.prior_auth import generate_prior_auths
 from generator.save_tables import save_csv
 from generator.service_events import generate_service_events
@@ -30,10 +31,13 @@ def main() -> None:
 
     prior_auths = generate_prior_auths(events, providers, cfg)
 
+    claims = generate_claims(events, cfg)
+
     save_csv(members, "members")
     save_csv(providers, "providers")
     save_csv(events, "service_events")
     save_csv(prior_auths, "prior_auths")
+    save_csv(claims, "claims")
 
 
 if __name__ == "__main__":
