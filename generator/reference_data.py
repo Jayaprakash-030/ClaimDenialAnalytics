@@ -618,4 +618,8 @@ def get_carc_codes() -> pd.DataFrame:
 
 
 if __name__ == "__main__":
+    print(get_lines_of_business())
+    print(get_service_lines())
+    print(get_cpt_codes())
     print(get_icd10_codes())
+    print(get_carc_codes())
