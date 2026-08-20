@@ -30,6 +30,10 @@ rates:
   admin_cost_manual: 20.0
   admin_cost_appeal: 35.0
 
+benefits:
+  default_coinsurance_pct: 0.20
+  office_visit_copay: 25.00
+
 targets:
   denial_rate_by_lob:
     commercial: 0.12

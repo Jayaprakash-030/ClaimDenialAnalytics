@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from generator.claims import generate_claims
@@ -10,6 +11,9 @@ from generator.prior_auth import generate_prior_auths
 from generator.providers import generate_providers
 from generator.reference_data import load_config
 from generator.service_events import generate_service_events
+
+_CODING_CARCS = np.array(["CO-16", "CO-4", "CO-11", "CO-97", "CO-151"])
+_CODING_CARC_WEIGHTS = np.array([0.40, 0.20, 0.20, 0.12, 0.08])
 
 
 def get_enrollment(members: pd.DataFrame, member_id: str):
@@ -82,12 +86,88 @@ def check_duplicate(is_duplicate: bool) -> tuple[bool, str | None]:
     return True, None
 
 
+def check_code_edits(
+    providers: pd.DataFrame,
+    provider_id: str,
+    rng: np.random.Generator,
+) -> tuple[bool, str | None]:
+    """
+    Code edit check (pipeline step 6).
+
+    v1: probabilistic denial driven by provider billing_quality (not full NCCI).
+
+    Returns:
+        (True, None) if coding passes
+        (False, CARC) if denied — CO-16 / CO-4 / CO-11 / CO-97 / CO-151
+    """
+    row = providers.loc[providers["provider_id"] == provider_id, ["billing_quality"]]
+    if row.empty:
+        return False, "CO-16"
+
+    quality = float(row.iloc[0]["billing_quality"])
+    # ~1% for high-quality billers, up to ~10% for problem providers
+    denial_prob = 0.01 + 0.10 * (1.0 - quality)
+    if rng.random() >= denial_prob:
+        return True, None
+
+    carc = rng.choice(_CODING_CARCS, p=_CODING_CARC_WEIGHTS)
+    return False, str(carc)
+
+
+def apply_pricing(
+    service_line_id: str,
+    billed_amount: float,
+    allowed_amount: float,
+    config: dict,
+) -> dict[str, object]:
+    """
+    Pricing step (pipeline step 7).
+
+    v1: office_visit flat copay (PR-3); all other lines coinsurance (PR-2);
+    contractual write-down (CO-45) when billed exceeds allowed.
+    """
+    benefits = config["benefits"]
+    billed = float(billed_amount)
+    allowed = float(allowed_amount)
+    contractual = round(max(0.0, billed - allowed), 2)
+
+    if service_line_id == "office_visit":
+        copay = float(benefits["office_visit_copay"])
+        patient = round(min(copay, allowed), 2)
+        patient_carc: str | None = "PR-3"
+    else:
+        patient = round(
+            allowed * float(benefits["default_coinsurance_pct"]), 2
+        )
+        patient_carc: str | None = "PR-2"
+
+    paid = round(allowed - patient, 2)
+    return {
+        "contractual_adjustment": contractual,
+        "adjustment_carc": "CO-45" if contractual > 0 else None,
+        "patient_responsibility": patient,
+        "patient_carc": patient_carc,
+        "paid_amount": paid,
+    }
+
+
 def adujudicate_claims(
-    claims: pd.DataFrame, members: pd.DataFrame, providers: pd.DataFrame
+    claims: pd.DataFrame,
+    members: pd.DataFrame,
+    providers: pd.DataFrame,
+    config: dict | None = None,
 ) -> pd.DataFrame:
+    cfg = config if config is not None else load_config()
+    rng = np.random.default_rng(cfg["seed"])
+
     adjudicated = claims.copy()
     adjudicated["status"] = pd.NA
     adjudicated["denial_carc"] = pd.NA
+    adjudicated["contractual_adjustment"] = pd.NA
+    adjudicated["adjustment_carc"] = pd.NA
+    adjudicated["patient_responsibility"] = pd.NA
+    adjudicated["patient_carc"] = pd.NA
+    adjudicated["paid_amount"] = pd.NA
 
     for row in adjudicated.itertuples(index=True, name="Claim"):
 
@@ -112,6 +192,23 @@ def adujudicate_claims(
             adjudicated.loc[row.Index, "denial_carc"] = carc
             continue
 
+        # code edit checks
+        passed, carc = check_code_edits(providers, row.provider_id, rng)
+        if not passed:
+            adjudicated.loc[row.Index, "status"] = "denied"
+            adjudicated.loc[row.Index, "denial_carc"] = carc
+            continue
+
+        pricing = apply_pricing(
+            row.service_line_id,
+            row.billed_amount,
+            row.allowed_amount,
+            cfg,
+        )
+        for col, val in pricing.items():
+            adjudicated.loc[row.Index, col] = val
+        adjudicated.loc[row.Index, "status"] = "paid"
+
     return adjudicated
 
 
@@ -124,4 +221,4 @@ if __name__ == "__main__":
     prior_auths = generate_prior_auths(events, providers, cfg)
     claims = generate_claims(events, cfg)
 
-    adjudicated = adujudicate_claims(claims, members, providers)
+    adjudicated = adujudicate_claims(claims, members, providers, cfg)
