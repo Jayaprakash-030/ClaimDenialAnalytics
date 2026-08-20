@@ -5,10 +5,16 @@ CSV snapshots of generated / reference tables. Open these when you forget what a
 Files in `raw/` are **gitignored** (they can be large). Regenerate anytime:
 
 ```bash
-uv run python -m generator.dump_tables
+uv run python -m generator.run
 ```
 
-Or run a single module; its `__main__` also writes its CSV.
+Validate KPIs and structural checks against `config.yaml` targets:
+
+```bash
+uv run python -m generator.validate
+```
+
+Or run a single module; its `__main__` also writes its CSV where applicable.
 
 | CSV | Produced by | What it is |
 |---|---|---|
@@ -22,3 +28,10 @@ Or run a single module; its `__main__` also writes its CSV.
 | `service_events.csv` | `service_events.py` | Planned visits (source of truth for PA + claims) |
 | `prior_auths.csv` | `prior_auth.py` | PA decisions on PA-required events (approved / denied / never requested) |
 | `claims.csv` | `claims.py` | Submitted bills (amounts + received date); ~1% duplicates |
+| `adjudicated_claims.csv` | `adjudication.py` | Claims after pipeline: status, denial CARC, pricing, decision date |
+| `appeals.csv` | `appeals.py` | Filed appeals for denied claims: filed/decision dates, upheld/overturned |
+
+**Phase 1 entrypoints**
+
+- `generator/run.py` — generate all tables (same as `generator/dump_tables.py`)
+- `generator/validate.py` — target vs actual KPI report; exits non-zero on failure

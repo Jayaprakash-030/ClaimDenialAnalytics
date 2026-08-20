@@ -11,6 +11,8 @@ from generator.reference_data import (
     load_config,
 )
 from generator.claims import generate_claims
+from generator.adjudication import adujudicate_claims
+from generator.appeals import generate_appeals
 from generator.prior_auth import generate_prior_auths
 from generator.save_tables import save_csv
 from generator.service_events import generate_service_events
@@ -32,12 +34,16 @@ def main() -> None:
     prior_auths = generate_prior_auths(events, providers, cfg)
 
     claims = generate_claims(events, cfg)
+    adjudicated = adujudicate_claims(claims, members, providers, prior_auths, cfg)
+    appeals = generate_appeals(adjudicated, prior_auths, cfg)
 
     save_csv(members, "members")
     save_csv(providers, "providers")
     save_csv(events, "service_events")
     save_csv(prior_auths, "prior_auths")
     save_csv(claims, "claims")
+    save_csv(adjudicated, "adjudicated_claims")
+    save_csv(appeals, "appeals")
 
 
 if __name__ == "__main__":
