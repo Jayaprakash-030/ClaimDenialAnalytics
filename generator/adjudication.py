@@ -9,7 +9,7 @@ from generator.claims import generate_claims
 from generator.members import generate_members
 from generator.prior_auth import generate_prior_auths
 from generator.providers import generate_providers
-from generator.reference_data import load_config
+from generator.reference_data import get_lines_of_business, load_config
 from generator.service_events import generate_service_events
 
 _CODING_CARCS = np.array(["CO-16", "CO-4", "CO-11", "CO-97", "CO-151"])
@@ -24,6 +24,41 @@ def get_enrollment(members: pd.DataFrame, member_id: str):
     if row.empty:
         return None, None
     return row.iloc[0]["enrollment_start"], row.iloc[0]["enrollment_end"]
+
+
+def compute_decision_date(
+    received_date,
+    lob_id: str | None,
+    status: str,
+    rng: np.random.Generator,
+    sla_by_lob: dict[str, int],
+) -> pd.Timestamp:
+    """received_date plus processing lag; front-end rejections resolve faster."""
+    received = pd.to_datetime(received_date)
+    if status == "rejected":
+        lag_days = int(rng.integers(1, 4))
+    else:
+        sla = int(sla_by_lob.get(lob_id or "commercial", 30))
+        lag_days = int(rng.integers(1, sla + 1))
+    return received + pd.Timedelta(days=lag_days)
+
+
+def check_front_end_rejection(
+    rng: np.random.Generator,
+    config: dict,
+) -> bool:
+    """
+    Front-end edit check (pipeline step 2).
+
+    v1: ~3% of claims fail before adjudication (277CA rejection — no appeal,
+    no denial_carc). Rate from config rates.front_end_rejection.
+
+    Returns:
+        True if the claim may proceed to adjudication
+        False if rejected at the front door
+    """
+    rate = float(config["rates"]["front_end_rejection"])
+    return rng.random() >= rate
 
 
 def check_enrollment(
@@ -202,10 +237,15 @@ def adujudicate_claims(
     pa_by_event = {
         str(row["event_id"]): row for _, row in prior_auths.iterrows()
     }
+    lob_by_member = members.set_index("member_id")["lob_id"].astype(str).to_dict()
+    sla_by_lob = (
+        get_lines_of_business().set_index("lob_id")["sla_days"].astype(int).to_dict()
+    )
 
     adjudicated = claims.copy()
     adjudicated["status"] = pd.NA
     adjudicated["denial_carc"] = pd.NA
+    adjudicated["decision_date"] = pd.NA
     adjudicated["contractual_adjustment"] = pd.NA
     adjudicated["adjustment_carc"] = pd.NA
     adjudicated["patient_responsibility"] = pd.NA
@@ -214,11 +254,29 @@ def adujudicate_claims(
 
     for row in adjudicated.itertuples(index=True, name="Claim"):
 
+        if not check_front_end_rejection(rng, cfg):
+            adjudicated.loc[row.Index, "status"] = "rejected"
+            adjudicated.loc[row.Index, "decision_date"] = compute_decision_date(
+                row.received_date,
+                lob_by_member.get(str(row.member_id)),
+                "rejected",
+                rng,
+                sla_by_lob,
+            )
+            continue
+
         # enrollment checks
         passed, carc = check_enrollment(members, row.member_id, row.service_date)
         if not passed:
             adjudicated.loc[row.Index, "status"] = "denied"
             adjudicated.loc[row.Index, "denial_carc"] = carc
+            adjudicated.loc[row.Index, "decision_date"] = compute_decision_date(
+                row.received_date,
+                lob_by_member.get(str(row.member_id)),
+                "denied",
+                rng,
+                sla_by_lob,
+            )
             continue
 
         # in-network checks
@@ -226,6 +284,13 @@ def adujudicate_claims(
         if not passed:
             adjudicated.loc[row.Index, "status"] = "denied"
             adjudicated.loc[row.Index, "denial_carc"] = carc
+            adjudicated.loc[row.Index, "decision_date"] = compute_decision_date(
+                row.received_date,
+                lob_by_member.get(str(row.member_id)),
+                "denied",
+                rng,
+                sla_by_lob,
+            )
             continue
 
         # duplicate checks
@@ -233,6 +298,13 @@ def adujudicate_claims(
         if not passed:
             adjudicated.loc[row.Index, "status"] = "denied"
             adjudicated.loc[row.Index, "denial_carc"] = carc
+            adjudicated.loc[row.Index, "decision_date"] = compute_decision_date(
+                row.received_date,
+                lob_by_member.get(str(row.member_id)),
+                "denied",
+                rng,
+                sla_by_lob,
+            )
             continue
 
         # code edit checks
@@ -240,6 +312,13 @@ def adujudicate_claims(
         if not passed:
             adjudicated.loc[row.Index, "status"] = "denied"
             adjudicated.loc[row.Index, "denial_carc"] = carc
+            adjudicated.loc[row.Index, "decision_date"] = compute_decision_date(
+                row.received_date,
+                lob_by_member.get(str(row.member_id)),
+                "denied",
+                rng,
+                sla_by_lob,
+            )
             continue
 
         pa_row = pa_by_event.get(str(row.event_id))
@@ -252,6 +331,13 @@ def adujudicate_claims(
         if not passed:
             adjudicated.loc[row.Index, "status"] = "denied"
             adjudicated.loc[row.Index, "denial_carc"] = carc
+            adjudicated.loc[row.Index, "decision_date"] = compute_decision_date(
+                row.received_date,
+                lob_by_member.get(str(row.member_id)),
+                "denied",
+                rng,
+                sla_by_lob,
+            )
             continue
 
         pricing = apply_pricing(
@@ -263,7 +349,15 @@ def adujudicate_claims(
         for col, val in pricing.items():
             adjudicated.loc[row.Index, col] = val
         adjudicated.loc[row.Index, "status"] = "paid"
+        adjudicated.loc[row.Index, "decision_date"] = compute_decision_date(
+            row.received_date,
+            lob_by_member.get(str(row.member_id)),
+            "paid",
+            rng,
+            sla_by_lob,
+        )
 
+    adjudicated["decision_date"] = pd.to_datetime(adjudicated["decision_date"])
     return adjudicated
 
 
