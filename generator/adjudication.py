@@ -114,6 +114,45 @@ def check_code_edits(
     return False, str(carc)
 
 
+def check_prior_auth(
+    pa_row: pd.Series | None,
+    provider_id: str,
+    service_date,
+    pa_required: bool,
+) -> tuple[bool, str | None]:
+    """
+    Prior authorization check (pipeline step 9).
+
+    Looks up the pre-built PA row for this event_id. Denials emerge from
+    prior_auths — not random dice.
+
+    Returns:
+        (True, None) if PA not required, or a matching approved auth exists
+        (False, "CO-197") if required and missing / invalid
+    """
+    if not bool(pa_required):
+        return True, None
+
+    if pa_row is None:
+        return False, "CO-197"
+
+    if pa_row["status"] != "approved" or pa_row["match_quality"] != "exact":
+        return False, "CO-197"
+
+    service_date = pd.to_datetime(service_date)
+    if str(pa_row["provider_id"]) != str(provider_id):
+        return False, "CO-197"
+
+    auth_start = pd.to_datetime(pa_row["auth_start"])
+    auth_end = pd.to_datetime(pa_row["auth_end"])
+    if pd.isna(auth_start) or pd.isna(auth_end):
+        return False, "CO-197"
+    if service_date < auth_start or service_date > auth_end:
+        return False, "CO-197"
+
+    return True, None
+
+
 def apply_pricing(
     service_line_id: str,
     billed_amount: float,
@@ -155,10 +194,14 @@ def adujudicate_claims(
     claims: pd.DataFrame,
     members: pd.DataFrame,
     providers: pd.DataFrame,
+    prior_auths: pd.DataFrame,
     config: dict | None = None,
 ) -> pd.DataFrame:
     cfg = config if config is not None else load_config()
     rng = np.random.default_rng(cfg["seed"])
+    pa_by_event = {
+        str(row["event_id"]): row for _, row in prior_auths.iterrows()
+    }
 
     adjudicated = claims.copy()
     adjudicated["status"] = pd.NA
@@ -199,6 +242,18 @@ def adujudicate_claims(
             adjudicated.loc[row.Index, "denial_carc"] = carc
             continue
 
+        pa_row = pa_by_event.get(str(row.event_id))
+        passed, carc = check_prior_auth(
+            pa_row,
+            row.provider_id,
+            row.service_date,
+            row.pa_required,
+        )
+        if not passed:
+            adjudicated.loc[row.Index, "status"] = "denied"
+            adjudicated.loc[row.Index, "denial_carc"] = carc
+            continue
+
         pricing = apply_pricing(
             row.service_line_id,
             row.billed_amount,
@@ -221,4 +276,4 @@ if __name__ == "__main__":
     prior_auths = generate_prior_auths(events, providers, cfg)
     claims = generate_claims(events, cfg)
 
-    adjudicated = adujudicate_claims(claims, members, providers, cfg)
+    adjudicated = adujudicate_claims(claims, members, providers, prior_auths, cfg)
