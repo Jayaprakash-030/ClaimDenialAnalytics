@@ -1,6 +1,4 @@
--- dim date table
-
-DROP TABLE IF EXISTS warehouse.dim_date;
+DROP TABLE IF EXISTS warehouse.dim_date CASCADE;
 
 CREATE TABLE warehouse.dim_date AS
 SELECT
@@ -12,7 +10,7 @@ SELECT
     TO_CHAR(d, 'Month') AS month_name,
     (EXTRACT(DAY FROM d) = 1) AS is_month_start
 FROM generate_series(
-    DATE '2024-01-01',
+    DATE '2023-01-01',
     DATE '2026-12-31',
     INTERVAL '1 day'
 ) AS d;
@@ -20,6 +18,4 @@ FROM generate_series(
 ALTER TABLE warehouse.dim_date
     ADD PRIMARY KEY (date_day);
 
-
-SELECT COUNT(*) FROM warehouse.dim_date;  -- expect 1096
-SELECT MIN(date_day), MAX(date_day) FROM warehouse.dim_date;
+SELECT MIN(date_day), MAX(date_day), COUNT(*) FROM warehouse.dim_date;

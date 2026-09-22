@@ -93,7 +93,9 @@ def generate_prior_auths(
             lead = int(rng.integers(3, 22))
             decision_date = service_date - timedelta(days=lead)
             # Wrong provider and/or expired window so M6 cannot match this event
-            mismatch_mode = rng.choice(["provider", "dates", "both"], p=[0.40, 0.40, 0.20])
+            mismatch_mode = rng.choice(
+                ["provider", "dates", "both"], p=[0.40, 0.40, 0.20]
+            )
             if mismatch_mode in {"provider", "both"}:
                 pa_provider = _other_provider(rng, event_provider, ptype, pools)
             if mismatch_mode in {"dates", "both"} or pa_provider == event_provider:
@@ -159,9 +161,12 @@ if __name__ == "__main__":
     denied = (bad["status"] == "denied").sum()
     fail_modes = never + unmatched
     print()
-    print(f"never_requested / unmatched among CO-197 seeds: {never} / {unmatched} "
-          f"({never / fail_modes:.2%} / {unmatched / fail_modes:.2%})"
-          if fail_modes else "no failure modes")
+    print(
+        f"never_requested / unmatched among CO-197 seeds: {never} / {unmatched} "
+        f"({never / fail_modes:.2%} / {unmatched / fail_modes:.2%})"
+        if fail_modes
+        else "no failure modes"
+    )
     print(f"PA denied up front: {denied}")
 
     merged = prior_auths.merge(
@@ -176,7 +181,9 @@ if __name__ == "__main__":
         & (merged["auth_start"] <= merged["service_date"])
         & (merged["auth_end"] >= merged["service_date"])
     )
-    print(f"Exact rows that actually cover the event: {covers.sum():,} / {exact.sum():,}")
+    print(
+        f"Exact rows that actually cover the event: {covers.sum():,} / {exact.sum():,}"
+    )
     print(
         "Non-PA service lines in PA table:",
         merged.loc[~merged["pa_required"], "service_line_id"].unique().tolist(),
